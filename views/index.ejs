@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>띵-또!</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel='stylesheet' href='/stylesheets/reset.css' />
+    <link rel='stylesheet' href='/stylesheets/index.css' />
+  </head>
+  <body>
+    <div class="initial-wrapper">
+      <div class="bg"></div>
+      <div class="layer">
+        <h1>Write Your Nickname</h1>
+        <div class="form-control">
+          <input type="text" name="nickname">
+          <button type="button" class="btn-enter">입장</button>
+        </div>
+      </div>
+    </div>
+
+    <article>
+      <section class="section-pop">
+        <h1>DDING DDO</h1>
+        <p class="dding-count">0</p>
+      </section>
+      <section class="section-ranking">
+        <h1 class="h1-header hiding-header">
+          <span class="h1-span-ranking"></span>
+          <span class="h1-span-nickname"></span>
+          <img src="/images/expend_more.png">
+        </h1>
+        <h1 class="h1-header open-header">
+          <b>리더보드</b>
+          <img src="/images/expend_less.png">
+        </h1>
+
+        <template id="template-li">
+          <li class="li-ranking">
+            <span class="rank"></span>
+            <span class="nickname"></span>
+            <span class="count"></span>
+          </li>
+        </template>
+        <ul class="ul-ranking">
+        </ul>
+      </section>
+    </article>
+
+    <div class="loading-wrapper">
+      <div class="lds-roller"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+    </div>
+
+    <script src="/jquery/dist/jquery.min.js"></script>
+    <script src="/socket.io/client-dist/socket.io.min.js"></script>
+
+    <script>
+      let uid;
+      let popCount = 0;
+      let ranking = [];
+      const socket = io.connect("ws://localhost:3000", {
+        path: "/pop",
+      });
+
+      const $loading = $(".loading-wrapper");
+      socket.on("connect", () => {
+        $loading.hide();
+      })
+
+
+      // 로그인
+      $(()=>{
+        $(".btn-enter").on("click", () => {
+          $loading.show();
+          const nickname = $("input[name=nickname]").val();
+          socket.emit("enter", { nickname });
+          socket.once("join", ({ ranking, uid: _uid, count }) => {
+            uid = _uid;
+            popCount = count;
+
+            $(".h1-span-ranking").text(ranking);
+            $(".h1-span-nickname").text(nickname);
+            $(".dding-count").text(popCount);
+
+            $(".initial-wrapper").hide();
+            $loading.hide();
+          })
+        });
+      })
+
+      // poping
+      $(()=>{
+        $("section.section-pop").on("mousedown touchstart", (e) => {
+          e.preventDefault();
+          $("section.section-pop").addClass("active");
+        });
+
+        $("section.section-pop").on("mouseup touchend", (e) => {
+          e.preventDefault();
+          $("section.section-pop").removeClass("active");
+
+          popCount += 1;
+
+          socket.emit("pop", { x: 1, y: 1 });
+          $(".dding-count").text(popCount);
+
+          const myRanking = ranking.find(e=>e.uid === uid);
+          myRanking.count = popCount;
+          ranking = ranking.sort((a, b) => b.count - a.count);
+          $(".h1-span-ranking").text(ranking.findIndex(e=>e.uid === uid) + 1);
+
+          drawUl(ranking);
+        })
+      });
+
+
+      function drawUl(ranking) {
+          const $ul = $(".ul-ranking");
+          const $liTemplate = $("#template-li");
+
+          $ul.html(
+            ranking.map((rank, idx) => {
+              const $li = $liTemplate.contents().clone();
+              if(rank.uid === uid) $li.addClass("my-ranking")
+              $li.attr("data-uid", rank.uid);
+              $li.find(".rank").text(idx + 1)
+              $li.find(".nickname").text(rank.nickname);
+              $li.find(".count").text(rank.count);
+
+              return $li;
+            })
+          )
+        }
+      // ranking
+      $(()=>{
+        socket.on("ranking", ({ ranking: _ranking }) => {
+          ranking = _ranking.sort((a, b) => b.count - a.count);
+          drawUl(ranking);
+        });
+
+        socket.on("user", ({ uid, nickname, count, isNew }) => {
+          const rank = ranking.find(e=>e.uid === uid);
+
+          if(!rank) {
+            ranking.push({ uid, nickname, count, isNew });
+          } else {
+            rank.count = count;
+          }
+
+          ranking = ranking.sort((a, b) => b.count - a.count);
+          drawUl(ranking);
+        })
+      });
+
+      // ranking ui
+      $(()=>{
+        const $section = $(".section-ranking");
+        $(".h1-header").on("click", function() {
+          if($section.hasClass("active")) {
+            $section.removeClass("active");
+            $section.animate({ height: "40px" });
+          } else {
+            $section.addClass("active");
+            $section.animate({ height: '70vh' }, 400, () => {
+              const rank = ranking.findIndex(e=>e.uid === uid);
+              $(".ul-ranking").animate({ scrollTop: $(".li-ranking.my-ranking").position().top - 100 })
+            });
+          }
+        })
+      })
+    </script>
+  </body>
+</html>
